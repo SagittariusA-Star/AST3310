@@ -1,2 +1,1 @@
-# AST3310
-AST3310 – Astrophysical Plasma and Stellar Interiors
+AST33110-Astrophysical plasma and stellar interiors

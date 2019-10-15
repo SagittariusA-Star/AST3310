@@ -1,0 +1,322 @@
+\documentclass{emulateapj}
+%\documentclass[12pt,preprint]{aastex}
+
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{amsmath}
+\usepackage{epsfig, floatflt}
+\usepackage{natbib, hyperref}
+\usepackage{url}
+\usepackage[arrowdel]{physics}
+
+\begin{document}
+	
+	\title{Ast3310 Project Nr. 3: Stellar Convection}
+	
+	\author{Nils-Ole Stutzer}
+	
+	%\email{nilsole2009@live.no}
+	
+	%\altaffiltext{1}{Institute of Theoretical Astrophysics, University of
+		%Oslo, P.O.\ Box 1029 Blindern, N-0315 Oslo, Norway}
+	\section*{Introduction}
+	In the previous projects we modelled a complete star, implementing both radiative and convective energy transport. These models where, however, only one dimensional and are thus limited in how realistic they are. In this project we will model the convection in the upper layers of a star in two dimensions by using hydrodynamics. The numerical model will be implemented as a Python class. The final product of the project will be a video of the temperature development and fluid stream of 2D convection.
+	
+	\section*{Method}
+	In order to model convection we will use hydrodynamics, since the gas in the upper layers of a star behave like a fluid. However, to make the task at hand a bit more solvable we neglect internal friction and turbulence. Individual gas particles in a real gas have velocities on the form $\vec{v} = \vec{u} + \vec{f}_i$, where $\vec{u}$ is the mean velocity of the particle (i.e. the velocity of the fluid as a whole) and $\vec{f}_i$ are velocities of the individual particles around the mean velocity. We will in this project only consider the velocity of the fluid as a whole $\vec{u}$ as a simplification. 
+	
+	More concrete we need three equations to model convection. These are the continuity equation with no source term, governing the conservation of mass in the fluid. Next we want to conserve the total momentum of the fluid and we need to conserve the internal energy of the fluid. These three laws are given as
+	\begin{align}
+		\pdv{\rho}{t} + \div{(\rho \vec{u})} &= 0
+		\label{eq:continuity}\\
+		\pdv{\rho \vec{u}}{t} + \div{(\rho \vec{u}\otimes\vec{u})} &= -\grad{P} + \rho \vec{g}
+		\label{eq:momentum}\\
+		\pdv{e}{t} + \div{(e\vec{u})} &= -P\div{\vec{u}},
+		\label{eq:energy}
+	\end{align} 
+	where $\rho$ is the mass density, $\rho \vec{u}$ is the momentum density, $e$ internal energy density (specific internal energy), $P$ is the pressure and $\vec{g} = g_y \hat{y} -\frac{GM_\odot}{R_\odot}\hat{y}$ is the gravitational field strength. We assume here that the gravitational field strength is constant and equal to its value at the Sun's surface. That is because the radial distance of the area in the stars upper layers we consider is negligible compared to the Stars radius. Due to the small area of simulation the spherical coordinates describing the star can safely be approximated using Cartesian coordinates, so that $y$ corresponds to the radial distance (therefore $\vec{g}||\hat{y}$) and $x$ corresponds to the distance along the stars surface.
+	
+	We first consider the continuity equation (\ref{eq:continuity}). If we let the velocity $\vec{u} = u\hat{x} + w\hat{y}$, where $u$ and $w$ are the horizontal and vertical velocities of the fluid, then we get that
+	\begin{align}
+		\pdv{\rho}{t} &= - \div{(\rho \vec{u})} = - \left(\hat{x}\pdv{x} + \hat{y}\pdv{y}\right)\cdot \left(\rho u \hat{x} + \rho w \hat{y}\right)\\
+		 &= - \pdv{\rho u}{x} - \pdv{\rho w}{y}.
+	\end{align}
+	Next when looking at the momentum conservation equation (\ref{eq:momentum}), we can write it using Einstein's convention on the form 
+	\begin{align}
+		\pdv{\rho u_i}{t} + \pdv{x_j}(\rho u_i u_j) = -\pdv{P}{x_i} + \rho g_i, 
+	\end{align}
+	where $i = x, y$ indicate the Cartesian components. For the first component , $i = x$, we get
+	\begin{align}
+		\pdv{\rho u}{t} + \pdv{x}(\rho u u) + \pdv{y}(\rho u w) = -\pdv{P}{x},
+	\end{align}
+	since $g_x = 0$ and $j$ runs through all indexes. For the second component, $i = y$, we obtain the equation 
+	\begin{align}
+		\pdv{\rho w}{t} + \pdv{y}(\rho w w) + \pdv{x}(\rho w u) = -\pdv{P}{y} + \rho g_y.
+	\end{align}
+	Therefore we get the two equations 
+	\begin{align}
+		\pdv{\rho u}{t} &= - \pdv{x}(\rho u^2) - \pdv{y}(\rho u w) -\pdv{P}{x}\\
+		\pdv{\rho w}{t} &= - \pdv{y}(\rho w^2) - \pdv{x}(\rho w u) -\pdv{P}{y} + \rho g_y.
+	\end{align}
+	Finally we can rewrite the energy conservation equation (\ref{eq:energy}) in the following way
+	\begin{align}
+		\pdv{e}{t} &= -\div{(e \vec{u})} -P\div{\vec{u}} \\
+		&= -\pdv{x}(eu) - \pdv{y}(ew) - P(\pdv{u}{x} + \pdv{w}{y}),
+	\end{align}
+	when writing out the vector terms on component form, then applying the scalar product.
+	
+	In order to solve these four equations numerically we need to discretization the equations. We do that by defining a discrete $xy$-grid, where the $i^\text{th}$ element along the horizontal axis is given as $x_i = x_0 + i\Delta x$ and $j^\text{th}$ element along the vertical axis is given by $y_i = y_0 + j\Delta y$. Thus all variables will be represented by matrices, with components corresponding to the value at a given grid position. Since the discretization for the continuity equation and the x-component of the momentum equation were kindly provided by the project description, we will only show how to obtain a discretized energy equation and y-component of the momentum equation. However, the other two equations provided are derived completely analogous. 
+	
+	We first take a look at the energy equation. The time derivative of the internal energy density can be approximated by a Forward Time scheme
+	\begin{align}
+		\left[\pdv{e}{t}\right]^n_{i,j}\approx\frac{e^{n+1}_{i, j} - e^{n}_{i, j}}{\Delta t},
+	\end{align} 
+	for a discrete spatial $xy$-grid point given by the indexes $i$ and $j$ and at a time step $n$ so that the time $t^n = t_0  + n\Delta t$. This is an explicit differencing scheme, since we use information about the current time step $n$ to find the corresponding values at time step $n+1$. The right-hand side of the energy equation will for a grid point $i,j$ look the following way
+	\begin{align}
+		&\left[\pdv{e}{t}\right]^n_{i,j} \nonumber\\
+		&= -\left[\pdv{eu}{x}\right]^n_{i,j} -\left[\pdv{eu}{y}\right]^n_{i,j} - P^n_{i,j}\left(\left[\pdv{u}{x}\right]^n_{i,j} + \left[\pdv{w}{y}\right]^n_{i,j}\right)\nonumber\\
+		& = -e^n_{i,j} \left(\left[\pdv{u}{x}\right]^n_{i,j} + \left[\pdv{w}{y}\right]^n_{i,j}\right) - u^n_{i,j}\left[\pdv{e}{x}\right]^n_{i,j} \nonumber\\
+		&- w^n_{i,j}\left[\pdv{e}{y}\right]^n_{i,j} - P^n_{i,j}\left(\left[\pdv{u}{x}\right]^n_{i,j} + \left[\pdv{w}{y}\right]^n_{i,j}\right),
+		\label{eq:dedt} 
+	\end{align}
+	where each quantity simply is evaluated at each grid point, after which the product rule is used.
+	Equating this expression to the approximation of $\pdv{e}{t}$ we get an algorithm for finding the next time step $n + 1$:
+	\begin{align}
+		e^{n+1}_{i,j} &= e^n_{i,j} + \left[\pdv{e}{t}\right]^n_{i,j}\Delta t,
+		\label{eq:energy_disc}
+	\end{align}
+	where $\left[\pdv{e}{t}\right]^n_{i,j}$ is given by (\ref{eq:dedt}).
+	Similarly, we can find a discretization in order to advance a time step for the y-component of the momentum density. We again use the explicit approximation for time derivatives, so that 
+	\begin{align}
+		\left[\pdv{\rho w}{t}\right]^n_{i,j} \approx \frac{[\rho w]^{n+1}_{i,j} - [\rho w]^n_{i,j}}{\Delta t}.
+	\end{align}
+	The right-hand side of the y-component of the momentum equation is then discretized in the following way 
+	\begin{align}
+		&\left[\pdv{\rho w}{t}\right]^n_{i,j} \nonumber\\
+		&= -\left[\pdv{\rho w^2}{y}\right]^n_{i,j} - \left[\pdv{\rho u w}{x}\right]^n_{i,j} - \left[\pdv{P}{y}\right]^n_{i,j} - g_y \rho^n_{i,j}\nonumber\\
+		&= -\left[w \rho \right]^n_{i,j}\left(\left[\pdv{w}{y}\right]^n_{i,j} + \left[\pdv{u}{y}\right]^n_{i,j}\right) - w^n_{i,j}\left[\pdv{\rho w}{y}\right]^n_{i,j}\nonumber\\
+		&- u^n_{i,j}\left[\pdv{\rho w}{x}\right]^n_{i,j} - \left[\pdv{P}{y}\right]^n_{i,j} + g_y\rho^n_{i,j},
+		\label{eq:drhowdt} 
+	\end{align}
+	by use of the product rule. Combined with the time derivative approximation, and the fact that $[w\rho]^n_{i,j} = w^n_{i,j} \rho^n_{i,j}$, we find that the vertical velocity at the next time step $n+1$ is given by 
+	\begin{align}
+		w^n_{i,j} = \frac{1}{\rho^{n+1}_{i,j}}\left([\rho w]^n_{i,j} + \left[\pdv{\rho w}{t}\right]^n_{i,j}\Delta t\right),
+	\end{align}
+	where the density at the next time step $n+1$ is given by equation F.19 and F.20 from the project description and $\left[\pdv{\rho w}{t}\right]^n_{i,j}$ is given by (\ref{eq:drhowdt}). 
+	
+	Now, it is important to note that since a discrete description of the hydrodynamic equations result in discontinuity and is unconditionally unstable we want to use numerical schemes that provide the greatest stability, so as to enable longer simulations. Consider for instance the energy equation given by (\ref{eq:energy_disc}) and (\ref{eq:dedt}). We see that there are two types of terms in the expression in (\ref{eq:dedt}); the flow-dependent and flow-independent terms. The flow-dependent terms are characterized by having a flow term, like velocity or momentum terms $\left[w\right]^n_{i,j}$, $\left[u\right]^n_{i,j}$, $\left[w\rho\right]^n_{i,j}$ or $\left[u\rho\right]^n_{i,j}$, multiplied by derivatives. The flow-independent terms only consist of some flow-independent quantity multiplied by a derivative, e.g. $P^n_{i,j} \left[\pdv{u}{x}\right]^n_{i,j}$. 
+	
+	Because the flow-independent terms are quite stable as they are, we will use a Centred Space scheme, e.g.
+	\begin{align}
+		&\left[\pdv{u}{x}\right]^n_{i,j} \approx \frac{u^n_{i + 1, j} - u^n_{i - 1, j}}{2\Delta x}\\
+		&\left[\pdv{w}{y}\right]^n_{i,j} \approx \frac{w^n_{i, j + 1} - w^n_{i, j - 1}}{2\Delta y},
+	\end{align}
+	from (\ref{eq:dedt}). However, the flow-dependent terms become more stable if their flow dependence is respected, as the equation contains more discrete point in the direction against the flow (Upwind). Therefore we will use an Upwind Differencing Scheme for the gradients that have a flow dependent coefficient. Using Upwind Differencing we then get the following gradients
+	\begin{align}
+		u^n_{i,j}\left[\pdv{e}{x}\right]^n_{i,j}\approx u^n_{i,j}\cdot
+		\begin{cases}
+			\frac{e^n_{i,j} - e^n_{i-1,j}}{\Delta x}, & u^n_{i,j}\geq0\\
+			\frac{e^n_{i+1,j} - e^n_{i,j}}{\Delta x}, & u^n_{i,j}<0
+		\end{cases}\\
+		w^n_{i,j}\left[\pdv{e}{y}\right]^n_{i,j}\approx w^n_{i,j}\cdot
+		\begin{cases}
+			\frac{e^n_{i,j} - e^n_{i-1,j}}{\Delta y}, & w^n_{i,j}\geq0\\
+			\frac{e^n_{i+1,j} - e^n_{i,j}}{\Delta y}, & w^n_{i,j}<0
+		\end{cases}	
+	\end{align}
+	times their respective flow term. Thus the direction of differencing is dependent on the direction of the flow-coefficients. 
+	
+	The different differencing schemes in the program all have their respective method in the \texttt{Convection2D}-class. There are thus two methods for both the Centred and Upwind scheme, two for the $x$- and two for the $y$- gradients. A very convenient way of calculating the Central scheme along both the axis is using the \texttt{numpy.roll()} function. Then the difference between the next and the previous grid points along the whole array (in one direction) can be found by subtracting the backwards rolled array from the forwards rolled array. Dividing that difference by $2\Delta x$ or $2\Delta y$ we get the Centred scheme gradient. This is done in a similarly fashion for the Upwind difference scheme, only that it is combined with \texttt{numpy.where()} in order to select the right flow direction. For instance \text{numpy.where(u >= 0)} will return a boolean array, where the elements where $u\geq$ is set to \texttt{True} and the remaining are set to \texttt{False}. Then this boolean array is used to consider the flow direction of $u$ cross the whole grid at once, making it possible to select between the two directions of differencing in a quick way. 
+	
+	Note that all these differencing methods implement periodic boundaries automatically. This is advantageous for the horizontal boundaries, as we want them to be periodic. However, the vertical boundaries are not supposed to be periodic and are thus corrected by the \text{set\_boundary\_contions()}-method in the \texttt{hydro\_solver()}-method. How we set the vertical boundary conditions will be described in more detail later. 
+		
+	Now before going on to describing the way the numerical solver is built up in Python, we need to find some initial conditions for the hydrodynamic equations. We need initial conditions for temperature, pressure, density and energy, which we can find assuming that the gas is in hydrostatic equilibrium and that the double logarithmic temperature gradient is given by $\nabla = \pdv{\ln T}{\ln P}$, which must be slightly larger than 2/5. We let $\nabla = 2/5 + 10^{-4}$, which gave a satisfactory result. We also assume that the simulated gas i an ideal gas with internal energy density 
+	\begin{align}
+		e = \frac{1}{\gamma - 1} \frac{\rho}{\mu m_u}k_B T,
+		\label{eq:internal energy}
+	\end{align} 
+	where $\gamma = (f + 2)/f = 5/3$ is the adiabatic index for a point particle gas with thermodynamic degrees of freedom $f=3$, the mean molecular weight $\mu = 0.61$ of the gas, an atomic mass unit in kg $m_u$ and the Boltzmann constant $k_B$. Furthermore the equation of state is given by $P = (\gamma - 1)e$. The box in which we will simulate the convection will be of size 12 Mm in the $x$-direction and 4 Mm in the $y$-direction. We will place our origin in the lower left corer of the box, meaning that $y = 0$ is at the bottom of the box and the surface of the star is along $y = 4$ Mm. We will divide the box into $n_x = 300$ and $n_y = 100$ elements along the $x$- and $y$-axis respectively. Then we get differentials $\Delta x =\Delta y \approx 40133$ m. Because the provided animation module needs us to fill up the grids from the bottom up, index $j = 0$ will correspond to the bottom at the box, i.e. $y_{i, 0} = 0$. 
+	
+	We first take a look at the double temperature gradient 
+	\begin{align}
+		\nabla = \pdv{\ln T}{\ln P} = \frac{P}{T}\pdv{y}{P}\pdv{T}{y}.
+	\end{align}
+	From the assumtion of hydrostatic equilibrium we know that the pressure gradient is balanced by gravity so that $\pdv{P}{y} = -\rho |g_y|$. Inserting this, in addition to the equation of state and (\ref{eq:internal energy}), into $\nabla$ we obtain
+	\begin{align}
+		\nabla &= -\frac{P}{T}\frac{1}{\rho|g_y|}\pdv{T}{y} = - \frac{(\gamma - 1)e}{T} \frac{1}{\rho |g_y|}k_B T\nonumber\\
+		&= - \frac{k_B}{\mu m_u |g_y|}\pdv{T}{y}\implies \partial T = -\frac{\mu m_u |g_y|\nabla}{k_B}\partial y.
+	\end{align}
+	We now want to integrate from the bottom of the box to the top of the box
+	\begin{align}
+		\int_{T}^{T_0}dT &= -\frac{\mu m_u |g_y|\nabla}{k_B}\int_{y}^{y_0}dy \\
+		T(y) - T_0 &= -\frac{\mu m_u |g_y|\nabla}{k_B}(y - y_0).
+		\label{eq:temp}
+	\end{align}
+	Here $T$ is the temperature at a height $y$ and $T_0$ is the surface temperature (top of the photosphere of the sun) corresponding to $y = y_0 = 4$ Mm (Here the index 0 refers to the initial surface temperature and height rather than the grid index). Note that since $y\leq y_0$ the right-hand side of the temperature profile is always positive, implying that $T\geq T_0$ which makes sense. The temperature profile is linear.
+	
+	Next we take a look at the equation of state 
+	\begin{align}
+		P &= (\gamma - 1)e = \frac{\rho}{\mu m_u}k_B T\\
+		 &= \frac{\rho}{\mu m_u}k_B\left[T_0-\frac{\mu m_u |g_y|\nabla}{k_B}(y - y_0)\right]\\
+		 &= -\pdv{P}{y}\frac{1}{\mu m_u |g_y|}k_B\left[T_0-\frac{\mu m_u |g_y|\nabla}{k_B}(y - y_0)\right]\\
+		 &\implies \frac{\partial P}{P} = \frac{\partial y}{(y - y_0)\nabla - \frac{k_B T_0}{\mu m_u |g_y|}}.
+	\end{align}
+	In order to make the integration easier we simply substitute $ \beta = (y - y_0)\nabla - \frac{k_B T_0}{\mu m_u |g_y|}$ so that 
+	\begin{align}
+		\int_{P}^{P_0} \frac{dP}{P} &= \frac{1}{\nabla}\int_{\beta}^{\beta_0 = \beta(y_0)} \frac{d\beta}{\beta}\\
+		\ln\frac{P_0}{P} &= \frac{1}{\nabla} \ln\frac{\beta_0}{\beta} \implies \ln\frac{P}{P_0} = \frac{1}{\nabla} \ln\frac{\beta}{\beta_0}\\
+		\implies P(y) &= P_0 \left(\frac{\beta}{\beta_0}\right)^\frac{1}{\nabla}\\
+		& = P_0 \left[1 - \frac{\mu m_u |g_y|\nabla}{k_B T_0}(y - y_0)\right]^\frac{1}{\nabla}.
+		\label{eq:pressure}
+	\end{align}
+	The pressure at a depth $y$ is given by $P$ and at the surface the pressure is given by the upper photosphere pressure $P(y_0) = P_0$. Now, the temperature and density profiles along the $y$ direction will follow the two derived expressions. The initial values for the density and internal energy density are simply found from the ideal gas law $\rho = (\gamma - 1)e\mu mu / (k_B T)$ and the equation of state $e = P/(\gamma - 1)$. The initial velocity is simply set to zero.
+	
+	
+	When implementing the numerical solver in Python we used a class implementation. Furthermore, we chose a module based approach so as to make debugging easier and keep the code well organized. The first method (exept the \texttt{\_\_init\_\_}-method saving class attributes) in the \texttt{Convection2D}-class was the \texttt{initialise}-method. Here we filled up the matrices containing the initial distribution of $T$, $P$, $e$ and $\rho$ as well as the velocities $u^0_{i,j} = w^0_{i,j} = 0$. The depth profile of $T$ and $P$ as well as their dependent functions for $e$ and $\rho$ were also provided as separate methods, called upon in the \texttt{initialize}-method. To fill the temperature and pressure grids we looped through all columns and set the temperature and pressure along each column equal to the distribution given in (\ref{eq:temp}) and (\ref{eq:pressure}) by calling upon their respective methods. From these distribtions $\rho$ and $e$ are calculated using the filled $T$- and $\rho$-grids. In order to make the provided animation module (\texttt{FVis3.py}) work properly we had to fill the matrices from the bottom upwards, for instance making the first row of temperatures equal the temperature at the bottom of the simulated area (the highest temperature). 
+	
+	In order to provoke the gas to become convectively unstable we needed to add a Gaussian perturbation in the temperature distribution. This was also done in the \texttt{initialize}-method, by simply adding a two variable Gaussian to the default temperature profile (from from the hydrostatic equilibrium case)
+	\begin{align}
+		T &= T_\text{hyd. eq.} + T_\text{pert.} \nonumber\\
+		&= T_{hyd. eq.} + \alpha \delta T_0 \exp(-\frac{1}{2}\left[\left(\frac{x - \mu_x}{\sigma_x}\right)^2 + \left(\frac{y - \mu_y}{\sigma_y}\right)^2\right])
+		\nonumber
+	\end{align}
+	for a standard deviation $\sigma_x$ and $\sigma_y$ in the $x$ and $y$ direction to adjust the blobs physical extent, and a position of $(\mu_x, \mu_y)$ in the grid. By letting $\delta = 0, 1$ the perturbation can easily be turned on or off. Note that the normalization factor normally seen in front of a Gaussian is neglected. That is because we control the amplitude of the perturbation by the factor $\alpha$ times the photosphere temperature $T_0$. We found that it had to be added before the density $\rho$ was calculated in order to make the perturbation affect the system, or else it would be overwritten in the first time advance loop iteration due to no direct temperature dependence except in the initial conditions. 
+	
+	At this point we should able to solve the hydrodynamic equations inside the grid itself, except at the boundaries of the grid because there is a lack of information on how to handle these. However we can make several requirements enabling us to find some conditions for the boundaries. The boundaries in the horizontal direction (at $x=0$ and $x = 12$ Mm) we simply require periodic boundaries, meaning that $\phi^{-1, j} = \phi^n_{n_x-1, j}$ and $\phi^n_{n_x, j} = \phi^n_{0, j}$ where $\phi$ represents the different variables. The same condition is true for the derivatives of $\phi$. This is automatically implemented through the way we defined the gradients in the horizontal direction using the \texttt{numpy.roll()}-function.
+	
+	The vertical boundaries , however, are not periodic. The easiest boundary condition is that we set the vertical component of the velocity at the upper and lower boundaries to be zero at all times (all index $n$). We also want the vertical gradient of the horizontal velocity component to be zero, i.e. $\pdv{u}{y} = 0$. Thus, we can use this to find a boundary condition for $u$ by taking using a forward and backward difference approximation for the upper and lower boundary respectively. For the upper boundary we use a forward differencing so that 
+	\begin{align}
+		\left[\pdv{u}{y}\right]^n_{i,0} &= \frac{- u^n_{i, 0} + u^n_{i, 1} - 3u^n_{i, 0}}{2\Delta y} = 0\\
+		\implies u^n_{i, 0} &= \frac{1}{3}(4 u^n_{i,1} - u^n_{i, 2}),
+	\end{align}
+	while a backwards differencing scheme was used for the lower boundary so that
+	\begin{align}
+		\left[\pdv{u}{y}\right]^n_{i, -1} &= \frac{3 u^n_{i, -1} -4 u^n_{i, -2} + u^n_{i, -3}}{2\Delta y} = 0\\
+		\implies u^n_{i, 0} &= \frac{1}{3}(4 u^n_{i,-2} - u^n_{i, -3}).
+	\end{align}
+	
+	The remaining two boundary conditions are for the density $\rho$ and the energy density $e$. We can find both from requiring hydrostatic equilibrium at the upper and lower boundaries. That is because we don't want the upper and lower sides of the box to move, but rather remain static. The the pressure gradient is given, making it possible to find the internal energy density $e$ first and from that the density $\rho$. Thus the upper boundary for $e$ if found by
+	\begin{align}
+		\left[\pdv{P}{y}\right]^n_{i, 0} &= (\gamma - 1)\left[\pdv{e}{y}\right]^n_{i, 0} = \frac{- e^n_{i, 0} + e^n_{i, 1} - 3e^n_{i, 0}}{2\Delta y}\nonumber\\
+		&= -|g_y|\rho^n_{i,0} = -(\gamma - 1)\frac{|g_y|\mu m_u e^n_{i,0}}{k_B T^n_{i,0}}\nonumber\\
+		\implies e^n_{i,0} &= \frac{4 e^n_{i,1} - e^n_{i,2}}{3 - \frac{2\Delta y\mu m_u |g_y|}{k_BT^n_{i,0}}}, 
+	\end{align}
+	where we made use of the forward differencing scheme used for the $u$ boundaries. Similarly for the lower boundary we get that 
+	\begin{align}
+		\left[\pdv{P}{y}\right]^n_{i, -1} &= (\gamma - 1)\left[\pdv{e}{y}\right]^n_{i, -1} = \frac{3e^n_{i, -1} -4 e^n_{i, -2} +e^n_{i, -3}}{2\Delta y}\nonumber\\
+		&= -|g_y|\rho^n_{i,-1} = -(\gamma - 1)\frac{|g_y|\mu m_u e^n_{i,-1}}{k_B T^n_{i,-1}}\nonumber\\
+		\implies e^n_{i,-1} &= \frac{4 e^n_{i,-2} - e^n_{i,-3}}{3 + \frac{2\Delta y\mu m_u |g_y|}{k_BT^n_{i,-1}}}, 
+	\end{align}
+	
+	Now that we've discussed all the necessary numerics to solve the hydrodynamical equations we can go on to describe the general structure of the code implementing it. The main integration loop stepping the time forward is inside the provided animation module \texttt{FVis}. However we need to provide it an advance function that steps forward in time by one step. This is in our case the \texttt{hydro\_solver}-method, which is the main core of the \texttt{Convection2D}-class. As said the main aim of the \texttt{hydro\_solver}-method is to step the hydrodynamic equations forward by one time step. In order to do that, all gradient are called (as they are implemented in separate methods), then using these to calculate each time derivative of the primary variables at the current time step. 
+	
+	However, before actually updating the primary variable to the next time step the \texttt{get\_timestep()}-method in order to calculate the time step $\Delta t$. The \texttt{get\_timestep()}-method implements a variable step length, where it lets $\Delta t = p/\delta$ for an accuracy parameter $p$ and $\delta$ being the greatest of the ratios between the time derivative of a primary variable and the variable itself $\delta = max\left(|\pdv{\phi}{t}\frac{1}{\phi}|, |\frac{u}{\Delta x}|, |\frac{w}{\Delta y}|\right)$ (for $\phi = e, \rho$). The accuracy parameter $p$ determains the relative local error in the time integration. We found that a value $p = 0.1$, ensuring a relative error held bellow 10\%, to perform well. However, in some cases when the dynamical step length calculates a too small $\Delta t$ the integration loop may run very slowly since it is barely stepping formward in time for each iteration. The other extreme is that the calculated $\Delta t$ is too large, making the time loop iterate too far in each run. Therefore we make an upper and lower tolerance for the time step $\Delta t$. In case the variable step $\Delta t \geq 0.1$ s we set $\Delta t = 0.1$ s, while if the calculated step $\Delta t \leq 10^{-7}$ s we let $\Delta t = 10^{-7}$ s.
+	
+	After having calculated a time step $\Delta t$, we can use the calculated time derivatives of the primary variables to step the updating algorithms derived earlier to the next time step $n+1$. We firs need to update the mass density $\rho$, since the density at $n+1$ is needed to update the velocities $u$ and $w$. After updating the mass density, we update the velocities $u$ and $w$, and then the internal energy $e$.  
+	
+	Since both the Central and the Upwind scheme are implemented in such a way that they have periodic boundaries along both axes, but only the $x$-axis is supposed to have periodic boundaries, we need to set the correct boundary conditions along the second axis. Therefore when updating the primary variables the boundary conditions for the vertical direction are violated and need correction. This is done by calling the \texttt{set\_boundary\_conditions()}-method, where the vertical boundaries are enforced. The boundaries along the $x$-axis are automatically enforced through the way the derivatives are set up, thus they are in no need for correction. Since we don't need any boundary conditions for the secondary variables $T$ and $P$, as they depend directly on the primary variables, we need to call the \texttt{set\_boundary\_conditions()}-method after updating the primary variables, but before calculating the new secondary variables. Then the secondary variables are calculated directly from the corrected primary variables at the boundary.
+	
+	Note that when wanting to run a hydrodynamical simulation using the \texttt{Convection2D}- and \texttt{FVis}-class we first need to make an instance of the \texttt{Convection2D}-class. The before generating an instance \texttt{FVis}-class in order to perform the integration loop and make an animation, we need to initialize the PDEs using the \texttt{Convection2D.initialize()}-method, or else it will have no initial conditions to start from.
+	
+	After having implemented the numerical methods the program was tested by running it without any perturbation at hydrostatic equilibrium. If the produced animation of all the primary and secondary variables is reasonably well behaved, meaning no visible change (or as little as possible) over the course of a 60s simulation, the sanity check is passed and the program is ready to be tested applying a temperature perturbation. Also the mass and energy deviations seen in the produced animations should be relatively small over the course of the sanity check in order to pass it. The main goal of the project, being an animation of between 100-200 s of the temperature $T$ and the flow velocities indicated by a vector field, is then produced and saved to an \texttt{.mp4} video file. Also an animation of the time development of  the total convective flux $F_C$ as a function of the depth, meaning $F^n_{C,j} = (e_i w_i)^n_j$ (Einstein convention), was produced using the provided animation module (\texttt{FVis.animate\_energyflux()}). 
+	
+	As a bonus to what was specifically asked for by the project description one can then, if the sanity check is passed and the Gaussian perturbation is causing convection, try out some other perturbations in order to test the programs limit and simulate other interesting settings. We for instance applied a perturbation on the form 
+	\begin{align}
+		T_\text{pert.} = \alpha \delta T_0 e^{-\frac{1}{2}\left[\frac{y - \mu_y}{\sigma_y}\right]^2}\sin(\frac{6\pi x}{12\text{ Mm}}),
+		\label{eq:bonus_pert}
+	\end{align}
+	where $\alpha$, $\delta$, $\mu_y$ and $\sigma_y$ have the same meaning a before. This perturbation results in a Gaussian perturbation altogether vertical axis and a sine formed perturbation along the horizontal axis, thus resulting in 3 alternating hot and cold gas blobs. The cold blobs should then due to their higher density sink down, while the buoyant hot blobs should rise up, eventually resulting in several convection cells.
+	
+	\section*{Results/Discussion}
+	After finishing the Python script we initialized the grid so that it was in hydrostatic equilibrium. The we produced an animation of length 60s of all the primary and secondary variables, in order to see if the program behaved as it was supposed to. We found that there were no visible changes in any variables except in the vertical velocity component $w$. However, since the fluctuations from the expected value, $w = 0$ at hydrostatic equilibrium, where at its greatest about $w = 1.5$m/s and the box has sides of Mm order we can safely conclude that this will have no significant effect on the other variables. The small deviation in $w$, we found, was caused by the hydrostatic equilibrium term $-\pdv{P}{y} + g_y \rho$ in the time derivative $\pdv{\rho w}{t}$ was slightly different from zero. This was most probable due to some round-off errors in the numerical calculation and is not that dangerous in a relatively short simulation span (100 - 200 s), since the errors don't have time to amplify enough to cause problems. Both the mass and energy deviations shown in the animation are held at zero over the course of the 60s sanity check. All in all the sanity check was thus passed successfully.
+	
+	\begin{figure*}
+		\includegraphics[width = \textwidth]{conv_snap01.png}
+		\includegraphics[width = \textwidth]{conv_snap02.png}
+		\includegraphics[width = \textwidth]{conv_snap03.png}
+		%\includegraphics[width = \textwidth]{conv_snap04.png}
+		\includegraphics[width = \textwidth]{conv_snap05.png}
+		%\includegraphics[width = \textwidth]{conv_snap06.png}
+		\caption{The figure shows several snapshots of the time evolution of the temperature (as a colour plot) and fluid velocity (quiver plot) of the simulated hydrodynamic system. The system starts at rest but with a Gaussian temperature perturbation. Then the warm gas blob starts rising, until it reaches the top of the box and partially cools off. The cold gas then drops of down on the sides, while more warm gas is rising in the blobs middle. The average total energy flux can be seen in the right upper corner of each plot.}
+		\label{fig:convection}
+	\end{figure*}
+
+	After having passed the sanity check we added a Gaussian perturbation to the default temperature distribution, with an amplitude factor $\alpha T_0 = 0.5 T_0 = 2889$K centred in the box. We let the program calculate and produce a simulation over about 300 s, so as to ensure all phases of the simulation being captured. The resulting simulation can be seen in full length in the attached video \texttt{convection.mp4}. The produced simulation is quite stable until it reaches about 4 min, where it starts showing signs of numerical instability.  
+	
+	Several snapshots of the resulting simulation of the temperature development can be seen in Fig. \ref{fig:convection}. In the topmost snapshot one can see that the system starts at rest, $u = w = 0$, but having a warmer blob in the centre of the box. 
+	
+	In the second snapshot the warmer blobs starts to move upwards. That is because the warm blob has a lower density, making the blob buoyant. Thus all arrow point roughly upwards. However, we also observe the velocity arrows at the sides of the blob having small horizontal components. At the top of the blob these horizontal components point outwards, while they at the bottom point inwards. When the blob i rising upwards the top of the blob will experience a reduction in outer pressure pressing the blob together, resulting in the blobs top expanding. But at the bottom the pressure is greater making the blob contract slightly resulting in inwards velocity. Also when the blob has risen a bit, the mass that has left the area previously occupied by the blob is now refilled by gas streaming in from bellow due to the suction from the rising blob.
+	
+	In the third snapshot the rising blob is no longer blob-shaped but has started to deform. The top of the blob has now dramatically flared out to the sides with velocities diagonally outwards. This is due to the warm gas rising from bellow, then cooling off at the stars surface and cease to be buoyant, thus slowing down and eventually streaming back down at the sides of the blob. Meanwhile at the bottom of the blob, hot gas from the bottom of the box is being sucked into a vertical stream upwards.
+	
+	In the last snapshot we see that the cooled-down gas from the surface has finished a complete circulation cycle, as there is now a complete convection cell. The gas heated in the inner parts of the box are sucked up into the convection stream, until it reaches the surface area of the star. Here it cools down and flows back down to the bottom, where it is again heated and the cycle starts over again. If it weren't for the numerical instabilities the convection cell would probably be self-sustainable as long as it is fed with more energy from the inner parts of the star. 
+	
+	The behaviour of the gas blob follow the known hydrodynamical and thermodynamical properties it should have. But in order to make this model more realistic one could have included the stress tensor of the fluid and viscosity so as to allow for turbulence to play a role. Also the simulation could be further improved using higher order numerical methods, or a smaller accuracy parameter in the dynamical time step, in order to improve accuracy. Also one could use a finer grid improving the accuracy of the gradients found numerically. However, considering our simplified model does not include viscosity nor advanced higher order methods, it behaves quite realistically. 
+	
+	The time evolution of the total energy flux $F_C(y)$ per depth was animated using the \texttt{FVis}-modules built in \texttt{animate\_energyflux()}-method. In Fig. \ref{fig:flux} one can see several snapshots taken of the animation at different times. As expected from a non-moving gas, the total energy flux at the start is essentially zero at all layers. That is because there is no flow yet that can transport the energy, $F_C = e w = 0$ since $w = 0$. This is seen in the first of the plots.
+	
+	\begin{figure*}
+		\includegraphics[width=\textwidth]{flux_distribution.png}
+		\caption{The figure shows the 2D distribution of the vertical energy flux at 150 s after simulation star. One can see that there is a positive flux about where the warm gas blob caused an upwards movement of hot gas, and two negative flux contributions at each side of the upwards flow, caused by cold gas flowing down from the upper layers.}
+		\label{fig:fluxdistribution}
+	\end{figure*}
+	
+	In the second snapshot one can clearly see that the convective flux has grown quite rapidly over the first 50 s. Now the warm gas blob has started to move upwards thus making the flux grow roughly proportional to the vertical velocity of the accelerating blob. We see that the main bulk of the convective flux is placed at about a hight of 1.5 Mm above the bottom and below, not at the middle at 2 Mm where the blob is centred. This is an effect of the default temperature distribution (hydrostatic equilibrium), making the internal energy of the gas be higher at the bottom of the blob than at the top. Therefore since $F^\text{bottom}_{C} = e_\text{bottom} w > e_\text{top} w = F^\text{top}_C$, since $e_\text{bottom}>e_\text{top}$ assuming that all parts of the blob rise with roughly the same speed $w$.
+	
+	The third snapshot looks quite similar to the second one, differing only in that the flux bulk has grown a bit. This is consistent with the fact that the blob has accelerated, enabling a higher energy transport. Also it can be seen that the flux higher up in the box i slowly gaining size due to the blob rising higher up, shifting the position of the blob with higher internal energy. 
+	
+	In the fourth snapshot one can see that the bulk of the flux has both shifted in position and dramatically lost size. The reason for now being centred higher up in the box is due to te blob rising (in an accelerating fashion) upwards, bringing the hot energy rich gas further up, thus shifting the peak of the flux. The reason for the peak to loose size is, however, most probably due to the cooled-off gas streaming back down. Since the cold gas streaming back down has a non-zero internal energy, but a negative vertical velocity, it will result in a negative energy flux contribution $F_C^\text{cold}$ counteracting positive flux $F_C^{warm}$, from the warm gas being sucked upwards through the emerging convection cell. The peak therefore gradually drops as more cold gas flows back again, making the energy flux at the deepest layers essentially drop towards zero, while still retaining a positive peak above the middle of the box. The negative flux contribution become more evident when looking at the actual 2D vertical flux distribution seen in Fig. \ref{fig:fluxdistribution}. Here one can see that there is not only a positive flux contribution due to rising hot gas, but there are two large areas where cold gas brings energy back down again at both sides of the rising hot stream. 
+	
+	In the fifth and sixth snapshots of the total flux the previously positive flux peak as totally disappeared, now being dominated by the negative flux contributions bringing energy back down again. As more and more cold gas drops to the lower layers the energy flux decreases dramatically quickly at the bottom of the box. At the top of the box the energy flux is essentially zero, meaning that the positive and negative contributions are equally large resulting in no net energy transport. Thus equally much energy arrives and leaves the top of the box, while the bottom is fed with some energy. This is, however, also the time of the simulation where the model starts to show symptoms of numeric instability, not necessarily resulting in an extremely trustworthy result. One can also see this in that small "waves" have started to travel upwards from the bottom along the curve, but also there are some slight asymmetries in the last velocity stream plot in Fig. \ref{fig:convection}. These become even stronger after about 4 min in the simulations (see the attached video), and eventually result the numerical instabilities taking over. Something which becomes quite evident from the video itself when the velocity arrows start to behave very odd. 
+	
+	In Fig. \ref{fig:bonus} one can see the bonus simulation done using the Gaussian and sine perturbation described in (\ref{eq:bonus_pert}) (also available as video, see attached \texttt{bonus\_simulation.mp4}). Also in this case the system starts at rest, only this time having three hot and cold gas blobs in an alternating pattern. The cold blobs having a higher density, start to sink downwards, just as expected, while the hot blobs are buoyant and rise upwards. Eventually the hot rising gas cools of at the surface area and starts to sink down again, while the cold sinking blobs start heating up in the lower layers of the box making them buoyant. Thus several convection cells start forming, where hot gas rises, then cools of at the surface, and eventually sinks down again where it heats up again. One can clearly see the alternating circulation patterns of the convection cells in the two lowermost plots in Fig. \ref{fig:bonus}. The simulation is quite stable until about 3-4 min. into the simulations, were it starts to behave od at the cross overs between different stream directions, as expected since our model does not include inner friction or turbulence. However, in the period where the simulation is stable it looks very much as one would expect from a large area in a star having a onset of convection in several spots.
+	
+	\begin{figure*}
+		\centering
+		\includegraphics[width = 0.47\textwidth]{flux_snap01.png}
+		\includegraphics[width = 0.47\textwidth]{flux_snap02.png}
+		\includegraphics[width = 0.47\textwidth]{flux_snap03.png}
+		\includegraphics[width = 0.47\textwidth]{flux_snap04.png}
+		\includegraphics[width = 0.47\textwidth]{flux_snap05.png}
+		\includegraphics[width = 0.47\textwidth]{flux_snap06.png}
+		
+		\caption{The figure shows the time evolution of the convective energy flux $F_C(y)$ as a function of the depth $y$. When the system is at rest the flux is constantly equal to zero through the depth profile, but when the blob rises the flux grows. Eventually the positive flux "bump" travels upwards before disappearing, then there is a growing negative flux at the lower parts of the graph due to cold gas circulating downwards.}
+		\label{fig:flux}
+	\end{figure*}
+
+	\begin{figure*}
+		\includegraphics[width = \textwidth]{for_fun01.png}
+		\includegraphics[width = \textwidth]{for_fun02.png}
+		\includegraphics[width = \textwidth]{for_fun03.png}
+		\includegraphics[width = \textwidth]{for_fun04.png}
+		\caption{The figure shows the temperature development (as a colour plot) and the gas' velocites (as a quiver plot) with several alternating warm and cold gas blobs. The default temperature pertubation was perturbed using a Gaussian along the verical direction and a $\sin$ along the horizontal direction, thus causing several alternating hot and cold areas. One can see how the system starts of at rest, after which the cold blobs start sinking and the warm blobs start rising. After a while then there are several convection cells forming.}
+		\label{fig:bonus}
+	\end{figure*}
+
+	\section*{Conclusion}
+	In this project we wanted to simulate the convection inside the upper layers of a star. We did that by starting from the laws of mass, momentum, and energy conservation. These where then discretized in order to make an updating algorithm for the primary variables density $\rho$, velocities $u$ and $w$ as well as the internal energy density $e$. Initial and boundary conditions where then found under the assumption of hydrostatic equilibrium. After having passed the sanity check at maintaining hydrostatic equilibrium over the course of a 60 s simulation, we added a Gaussian temperature perturbation to make the gas become connectively unstable. The resulting simulation of the temperature and the fluid velocity was quite stable over the course of the first couple of hundred seconds before numerical instabilities took over. Also the fluids behaviour followed the predictions of known physics well, justifying the conclusion that the main goal of the project was reached making it a success. 
+	
+	\section*{What have I learned?}
+	Though the course of this last term project I learned a lot of things. For instance, I learned how to solve partial differential equations in 2D numerical, something which I'd newer done before. But it was not only the fact of how to solve a PDE that was educational, but also the process of solving them in it self, or rather the things learned from mastering the obstacles on the way. One example of that is how important the right boundary conditions for a PDE really are, as neglecting them can lead to serious errors. But also how important seemingly tiny details can affect the whole outcome of a simulation, making it clear how sensitive these numerical solutions really are. For instance, if differential $\Delta x$ and $\Delta y$ didn't have the exact right size and where slightly off, the simulation could never reach hydrostatic equilibrium due to the pressure gradient being slightly off in size. I also realize how effective a highly module based approach to such a problem is, because it really made it a lot easier to find bugs when being able to distinguish between different sources of error, not being confronted by a mix-up of all error sourced in one and the same spot. To conclude I think the most important lesson I've learned is exactly that; How sensitive the numerical solution to a PDE is, and that every detail has to be right in order to solve it properly. But also that it is very much solvable if one is patient enough in addition to keeping the simulation code ordered using a module based approach, facilitating the debugging process.
+	
+	
+	%\date{Received - / Accepted -}
+	
+	%\begin{figure}[t]
+	%
+	%\mbox{\epsfig{figure=filename.eps,width=\linewidth,clip=}}
+	%
+	%\caption{Description of figure -- explain all elements, but do not
+	%draw conclusions here.}
+	%\label{fig:figure_label}
+	%\end{figure}
+
+	
+	\begin{acknowledgements}
+		I thank my fellow student Bernhard Nornes Lotsberg and Jakob Borg for help and collaboration in this project. I also express my gratitude to Helle Bakke and Boris V. Gudiksen for an exiting and interesting course.
+	\end{acknowledgements}
+
+%\bibliography{ref}
+%\bibliographystyle{aasjournal}
+
+\end{document}
